@@ -21,6 +21,7 @@ def encrypt_file(key, nonce, file_path, output_path):
     with open(output_path, 'wb') as f:
         f.write(encrypted_data)
 
+
 def decrypt_file(key, nonce, file_path, output_path):
     cipher = Cipher(algorithms.AES(key), modes.CTR(nonce), default_backend())
     decryptor = cipher.decryptor()
@@ -31,23 +32,25 @@ def decrypt_file(key, nonce, file_path, output_path):
         f.write(decrypted_data)
 
 
-
 def encrypt_message(key, nonce, message):
     cipher = Cipher(algorithms.AES(key), modes.CTR(nonce), default_backend())
     encryptor = cipher.encryptor()
     encrypted_message = encryptor.update(message) + encryptor.finalize()
     return encrypted_message
 
-def decrypt_message(key,nonce,encrypted_message):
+
+def decrypt_message(key, nonce, encrypted_message):
     cipher = Cipher(algorithms.AES(key), modes.CTR(nonce))
     decryptor = cipher.decryptor()
     decrypted_message = decryptor.update(encrypted_message) + decryptor.finalize()
     return decrypted_message
 
+
 def generate_hmac(key, message):
     hmac = HMAC(key, hashes.SHA256())
     hmac.update(message)
     return hmac.finalize()
+
 
 def verify_hmac(key, message, received_hmac):
     hmac = HMAC(key, hashes.SHA256())
@@ -78,7 +81,7 @@ def check_client_pubkey(pubkey):
 
 
 def get_PSK():
-    with open('./PSK','rb') as f:
+    with open('./PSK', 'rb') as f:
         PSK = f.readline().strip()
     return PSK
 
@@ -113,7 +116,6 @@ class Dh_Handler(socketserver.BaseRequestHandler):
             self.request.sendall(response)
             return
 
-        
         self.data = self.request.recv(3072).strip()
         if self.state == 2 and bytearray(self.data)[0:18] == b'Client public key:':
             client_pubkey = load_pem_public_key(bytes(bytearray(self.data)[18:]), default_backend())
@@ -126,15 +128,15 @@ class Dh_Handler(socketserver.BaseRequestHandler):
                 print(self.data, self.state)
                 self.request.sendall(response)
                 print('Shared Secret:\n{}'.format(ba.hexlify(shared_secret)))
-                
+
             else:
                 response = b'Invalid client public key, hanging up'
                 self.request.sendall(response)
                 return
-                
+
         self.data = self.request.recv(3072).strip()
-        if self.state == 3 and bytearray(self.data) == b'Please give me the nonce':   
-            kdf = HKDF(  
+        if self.state == 3 and bytearray(self.data) == b'Please give me the nonce':
+            kdf = HKDF(
                 algorithm=hashes.SHA256(),
                 length=48,
                 salt=None,
@@ -148,32 +150,31 @@ class Dh_Handler(socketserver.BaseRequestHandler):
             self.nonce = os.urandom(16)
             self.request.sendall(b'Server nonce:' + self.nonce)
             self.state = 4
-        
 
         self.data = self.request.recv(3072).strip()
         if self.state == 4:
             response = b'Please choose the mode: 1: Talk 2: Transport File'
             self.request.sendall(response)
             self.state = 5
-            
-        self.data = self.request.recv(3072).strip() 
-        if  self.state == 5 and bytearray(self.data) == b'1':
-            response = b'Ok, We can start talk'  
+
+        self.data = self.request.recv(3072).strip()
+        if self.state == 5 and bytearray(self.data) == b'1':
+            response = b'Ok, We can start talk'
             self.request.sendall(response)
             self.state = 6
-            print(response,self.state)
-                
-        elif self.state == 5 and bytearray(self.data) == b'2': 
-            response = b'Ok, You can transport file'  
+            print(response, self.state)
+
+        elif self.state == 5 and bytearray(self.data) == b'2':
+            response = b'Ok, You can transport file'
             self.request.sendall(response)
-            self.state = 7 
-            print(response,self.state)
+            self.state = 7
+            print(response, self.state)
 
         else:
             response = b'Sorry, Your input is invalid, please reinput'
             self.request.sendall(response)
             self.state = 4
-        
+
         if self.state == 6:
             while True:
                 self.data = self.request.recv(3072).strip()
@@ -181,12 +182,12 @@ class Dh_Handler(socketserver.BaseRequestHandler):
                 received_hmac = self.data[-32:]
                 print('Received: {}'.format(self.data))
                 if verify_hmac(self.mac_key, received_message, received_hmac):
-                    decrypted_message = decrypt_message(self.key,self.nonce,received_message)
+                    decrypted_message = decrypt_message(self.key, self.nonce, received_message)
                     print('After decrypted_message: {}'.format(decrypted_message.decode()))
                     response = input('Your response:')
                     if response == 'quit':
                         break
-                    encrypted_response = encrypt_message(self.key,self.nonce,response.encode())
+                    encrypted_response = encrypt_message(self.key, self.nonce, response.encode())
                     hmac = generate_hmac(self.mac_key, encrypted_response)
                     self.request.sendall(encrypted_response + hmac)
                     print("Send successfully")
@@ -197,21 +198,20 @@ class Dh_Handler(socketserver.BaseRequestHandler):
             filedata = self.request.recv(3072).strip()
             received_file = filedata[:-32]
             received_hmac = filedata[-32:]
-        
+
             if verify_hmac(self.mac_key, received_file, received_hmac):
                 with open('received_file', 'wb') as f:
                     f.write(filedata)
                 with open('decrypt_received_file', 'wb') as f:
-                    f.write(decrypt_message(self.key, self.nonce,received_file))
+                    f.write(decrypt_message(self.key, self.nonce, received_file))
                 print('File received successfully.')
                 self.request.sendall(b'File received.')
             else:
                 print('File authentication failed')
-         
 
 
 def main():
-    host, port = '', 7777 
+    host, port = '', 7777
     dh_server = socketserver.TCPServer((host, port), Dh_Handler)
     try:
         dh_server.serve_forever()
