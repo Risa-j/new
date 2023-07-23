@@ -12,10 +12,11 @@ from cryptography.hazmat.primitives import hashes
 
 
 def get_PSK():
-    with open('./PSK','rb') as f:
+    with open('./PSK', 'rb') as f:
         PSK = f.readline().strip()
     return PSK
-    
+
+
 def encrypt_file(key, nonce, file_path, output_path):
     cipher = Cipher(algorithms.AES(key), modes.CTR(nonce), default_backend())
     encryptor = cipher.encryptor()
@@ -24,6 +25,7 @@ def encrypt_file(key, nonce, file_path, output_path):
     encrypted_data = encryptor.update(file_data) + encryptor.finalize()
     with open(output_path, 'wb') as f:
         f.write(encrypted_data)
+
 
 def decrypt_file(key, nonce, file_path, output_path):
     cipher = Cipher(algorithms.AES(key), modes.CTR(nonce), default_backend())
@@ -34,22 +36,26 @@ def decrypt_file(key, nonce, file_path, output_path):
     with open(output_path, 'wb') as f:
         f.write(decrypted_data)
 
-def encrypt_message(key,nonce,message):
+
+def encrypt_message(key, nonce, message):
     cipher = Cipher(algorithms.AES(key), modes.CTR(nonce), default_backend())
     encryptor = cipher.encryptor()
     encrypted_message = encryptor.update(message) + encryptor.finalize()
     return encrypted_message
 
-def decrypt_message(key,nonce,encrypted_message):
+
+def decrypt_message(key, nonce, encrypted_message):
     cipher = Cipher(algorithms.AES(key), modes.CTR(nonce))
     decryptor = cipher.decryptor()
     decrypted_message = decryptor.update(encrypted_message) + decryptor.finalize()
     return decrypted_message
 
+
 def generate_hmac(key, message):
     hmac = HMAC(key, hashes.SHA256())
     hmac.update(message)
     return hmac.finalize()
+
 
 def verify_hmac(key, message, received_hmac):
     hmac = HMAC(key, hashes.SHA256())
@@ -65,7 +71,7 @@ def main():
     host, port = 'localhost', 7777
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect((host, port))
-    request = get_PSK(); 
+    request = get_PSK();
     sock.sendall(request)
     received = sock.recv(3072).strip()
     print('Received:\n{}'.format(received))
@@ -97,7 +103,7 @@ def main():
         if isinstance(server_pubkey, dh.DHPublicKey):
             shared_secret = client_keypair.exchange(server_pubkey)
             print('Shared Secret\n{}'.format(ba.hexlify(shared_secret)))
-            kdf = HKDF(  
+            kdf = HKDF(
                 algorithm=hashes.SHA256(),
                 length=48,
                 salt=None,
@@ -117,20 +123,19 @@ def main():
     request = b'I have get the nonce'
     sock.sendall(request)
 
-    
-    received = sock.recv(3072).strip() 
+    received = sock.recv(3072).strip()
     print('Received:\n{}'.format(received))
     request = input("Mode:")
-    sock.sendall(request.encode()) 
-    
-    received = sock.recv(3072).strip() 
+    sock.sendall(request.encode())
+
+    received = sock.recv(3072).strip()
     print('Received:\n{}'.format(received))
     if bytearray(received) == b'Ok, We can start talk':
         while True:
             message = input('Your message: ')
             if message == 'quit':
                 break
-            encrypted_message = encrypt_message(key,nonce,message.encode())
+            encrypted_message = encrypt_message(key, nonce, message.encode())
             hmac = generate_hmac(mac_key, encrypted_message)
             sock.sendall(encrypted_message + hmac)
             print("Send successfully")
@@ -139,25 +144,24 @@ def main():
             received_hmac = response[-32:]
             print('Received: {}'.format(response))
             if verify_hmac(mac_key, received_message, received_hmac):
-                decrypted_message = decrypt_message(key,nonce,received_message)
+                decrypted_message = decrypt_message(key, nonce, received_message)
                 print('After decrypted message:\n{}'.format(decrypted_message.decode()))
             else:
-                print('Message authentication failed') 
+                print('Message authentication failed')
 
     elif bytearray(received) == b'Ok, You can transport file':
         while True:
             filename = input("Enter the filename: ")
             with open(filename, 'rb') as f:
                 filedata = f.read()
-            
-            encrypted_file = encrypt_message(key,nonce,filedata)
+
+            encrypted_file = encrypt_message(key, nonce, filedata)
             hmac = generate_hmac(mac_key, encrypted_file)
-            
+
             sock.sendall(encrypted_file + hmac)
-            received = sock.recv(3072).strip() 
+            received = sock.recv(3072).strip()
             print('Received:\n{}'.format(received))
-        
-            
+
 
 if __name__ == '__main__':
     main()
